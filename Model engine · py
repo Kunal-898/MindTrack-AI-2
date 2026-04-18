@@ -1,0 +1,130 @@
+"""
+MindTrack – Model Engine
+Loads the DistilRoBERTa emotion classifier (6 labels) and exposes
+a single predict() function used across all pages.
+ 
+Label mapping (matches config.json id2label):
+  0 → sadness  1 → joy  2 → love  3 → anger  4 → fear  5 → surprise
+"""
+ 
+import os
+import json
+import torch
+import torch.nn.functional as F
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+ 
+# ── Constants ──────────────────────────────────────────────────────────────────
+MODEL_DIR = os.environ.get("MINDTRACK_MODEL_DIR", "./model")
+ 
+# Human-friendly labels + UI colours for each of the 6 classes
+LABEL_META = {
+    0: {"name": "Sadness",  "emoji": "😢", "color": "#93C5FD", "bg": "#EFF6FF"},
+    1: {"name": "Joy",      "emoji": "😊", "color": "#34D399", "bg": "#F0FDF4"},
+    2: {"name": "Love",     "emoji": "❤️",  "color": "#F472B6", "bg": "#FDF2F8"},
+    3: {"name": "Anger",    "emoji": "😠", "color": "#F87171", "bg": "#FEF2F2"},
+    4: {"name": "Fear",     "emoji": "😨", "color": "#FBBF24", "bg": "#FFFBEB"},
+    5: {"name": "Surprise", "emoji": "😲", "color": "#A78BFA", "bg": "#F5F3FF"},
+}
+ 
+# Wellness score weights: positive emotions pull score up, negative pull down
+WELLNESS_WEIGHTS = {0: -0.8, 1: 1.0, 2: 0.9, 3: -0.7, 4: -0.6, 5: 0.2}
+ 
+_tokenizer = None
+_model     = None
+ 
+ 
+def _load_model():
+    """Lazy-load tokenizer + model once, cache in module globals."""
+    global _tokenizer, _model
+    if _tokenizer is None:
+        _tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
+    if _model is None:
+        _model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
+        _model.eval()
+    return _tokenizer, _model
+ 
+ 
+def predict(text: str) -> dict:
+    """
+    Run emotion classification on *text*.
+ 
+    Returns:
+        {
+          "emotions": [
+              {"id": int, "name": str, "emoji": str,
+               "color": str, "bg": str, "score": float},   # 0–100
+              ...                                            # sorted desc
+          ],
+          "dominant": {...},          # highest-scoring emotion dict
+          "wellness_index": float,    # 0–100  (overall mood health score)
+          "alert": bool,              # True when negative emotions dominate
+          "summary": str,             # one-sentence AI summary
+        }
+    """
+    tokenizer, model = _load_model()
+ 
+    inputs = tokenizer(
+        text,
+        return_tensors="pt",
+        truncation=True,
+        max_length=512,
+        padding=True,
+    )
+ 
+    with torch.no_grad():
+        logits = model(**inputs).logits
+        probs  = F.softmax(logits, dim=-1).squeeze()   # shape: (6,)
+ 
+    emotions = []
+    wellness = 50.0  # base
+    for idx, prob in enumerate(probs.tolist()):
+        meta = LABEL_META[idx]
+        score = round(prob * 100, 1)
+        emotions.append({
+            "id":    idx,
+            "name":  meta["name"],
+            "emoji": meta["emoji"],
+            "color": meta["color"],
+            "bg":    meta["bg"],
+            "score": score,
+        })
+        wellness += WELLNESS_WEIGHTS[idx] * prob * 50
+ 
+    emotions.sort(key=lambda e: e["score"], reverse=True)
+    dominant = emotions[0]
+ 
+    wellness = max(0.0, min(100.0, round(wellness, 1)))
+    negative_mass = sum(e["score"] for e in emotions if e["id"] in (0, 3, 4))
+    alert = negative_mass > 55.0   # >55 % negative → trigger alert
+ 
+    summary = _make_summary(dominant, wellness, alert)
+ 
+    return {
+        "emotions":       emotions,
+        "dominant":       dominant,
+        "wellness_index": wellness,
+        "alert":          alert,
+        "summary":        summary,
+    }
+ 
+ 
+def _make_summary(dominant: dict, wellness: float, alert: bool) -> str:
+    name = dominant["name"]
+    emoji = dominant["emoji"]
+    if alert:
+        return (f"Your entry shows strong {name.lower()} {emoji}. "
+                "Consider taking a mindful break or talking to someone you trust.")
+    if wellness >= 70:
+        return f"You're radiating {name.lower()} {emoji} — a great mental health day!"
+    if wellness >= 45:
+        return f"Your mood is balanced with a touch of {name.lower()} {emoji}. Keep reflecting!"
+    return (f"Today feels heavy with {name.lower()} {emoji}. "
+            "Writing more may help you process these feelings.")
+ 
+ 
+def wellness_color(score: float) -> str:
+    """Return a hex color reflecting the wellness score."""
+    if score >= 70: return "#10B981"   # green
+    if score >= 45: return "#FBBF24"   # amber
+    return "#EF4444"                   # red
+ 
