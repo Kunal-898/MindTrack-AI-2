@@ -1,0 +1,109 @@
+# 🧠 MindTrack – Setup & Run Guide
+
+AI-Driven Mental Health Sentiment & Trend Analysis for Personal Journals.
+
+---
+
+## 1. Project Structure
+
+```
+mindtrack/
+├── app.py                  ← Streamlit entry point (run this)
+├── model_engine.py         ← PyTorch / HuggingFace inference engine
+├── requirements.txt
+├── model/                  ← ⬅ Put your model files here
+│   ├── config.json         (already have this)
+│   ├── tokenizer.json      (already have this)
+│   └── pytorch_model.bin   (download – see Step 3)
+└── pages_ui/
+    ├── nav.py              ← Shared sidebar
+    ├── login_page.py
+    ├── dashboard_page.py   ← Journal entry + live analysis
+    ├── analytics_page.py   ← Charts & trends
+    └── settings_page.py
+```
+
+---
+
+## 2. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## 3. Place Your Model Files
+
+Copy `config.json` and `tokenizer.json` (already uploaded) into a `model/` folder:
+
+```bash
+mkdir model
+cp config.json   model/
+cp tokenizer.json model/
+```
+
+Then download the matching weights. Since `config.json` is a
+**DistilRoBERTa** 6-class emotion classifier, the compatible HuggingFace
+model is `bhadresh-savani/distilroberta-base-emotion`:
+
+```bash
+python - <<'EOF'
+from transformers import AutoModelForSequenceClassification
+m = AutoModelForSequenceClassification.from_pretrained(
+        "bhadresh-savani/distilroberta-base-emotion")
+m.save_pretrained("./model")
+EOF
+```
+
+> If you have your own fine-tuned `pytorch_model.bin`, copy it into `model/`
+> instead of running the download above.
+
+---
+
+## 4. Run the App
+
+```bash
+streamlit run app.py
+```
+
+Open http://localhost:8501 in your browser.
+
+---
+
+## 5. Demo Login
+
+Any username + any password ≥ 4 characters will work in demo mode.
+Replace the auth logic in `pages_ui/login_page.py` with real DB auth.
+
+---
+
+## 6. Custom Model Path
+
+Set the env variable if your model lives elsewhere:
+
+```bash
+MINDTRACK_MODEL_DIR=/path/to/model streamlit run app.py
+```
+
+---
+
+## Architecture
+
+```
+User types journal entry
+        ↓
+  Streamlit (app.py)
+        ↓
+  model_engine.predict(text)
+        ↓
+  AutoTokenizer  →  tokenize
+        ↓
+  DistilRoBERTa  →  6-class logits
+        ↓
+  Softmax  →  emotion probabilities
+        ↓
+  Wellness Index  +  Alert flag
+        ↓
+  Streamlit Dashboard / Analytics
+```
