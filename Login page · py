@@ -1,0 +1,47 @@
+"""
+MindTrack – Login Page
+Matches the HTML LoginPage component: gradient bg, glass card, brand header.
+"""
+
+import streamlit as st
+
+
+def render_login():
+    # Centre the card using columns
+    _, col, _ = st.columns([1, 1.6, 1])
+
+    with col:
+        st.markdown("""
+        <div class="glass-card" style="margin-top:6vh; text-align:center;">
+            <div style="font-size:2.6rem; margin-bottom:0.2rem;">🧠</div>
+            <h1 style="font-size:2rem; font-weight:700;
+                       background:linear-gradient(135deg,#3B82F6,#10B981);
+                       -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+                       margin:0 0 0.2rem;">MindTrack</h1>
+            <p style="color:#6B7280; font-size:0.9rem; margin-bottom:1.5rem;">
+                AI-Driven Mental Health Journal
+            </p>
+        """, unsafe_allow_html=True)
+
+        with st.form("login_form"):
+            username = st.text_input("Username", placeholder="Enter your username")
+            password = st.text_input("Password", type="password",
+                                     placeholder="Enter your password")
+            submitted = st.form_submit_button("Sign In →", use_container_width=True)
+
+        if submitted:
+            # Demo auth – replace with real DB check
+            if username and len(password) >= 4:
+                st.session_state.logged_in = True
+                st.session_state.username  = username
+                st.session_state.page      = "dashboard"
+                st.rerun()
+            else:
+                st.error("Please enter a valid username and password (min 4 chars).")
+
+        st.markdown("""
+            <p style="text-align:center; color:#9CA3AF; font-size:0.78rem; margin-top:1rem;">
+                Demo: any username + password ≥ 4 chars
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
