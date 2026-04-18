@@ -1,8 +1,0 @@
-# ─── MindTrack Environment Variables ───────────────────────────────────────────
-# Copy this file to .env and fill in real values before running.
-
-# Your Anthropic API key (get one at https://console.anthropic.com)
-ANTHROPIC_API_KEY=sk-ant-your-key-here
-
-# Secret key used for hashing passwords (change this in production!)
-SECRET_KEY=mindtrack-super-secret-change-me
