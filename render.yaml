@@ -1,0 +1,36 @@
+# render.yaml — Render.com Deployment Blueprint for MindTrack
+# Docs: https://render.com/docs/blueprint-spec
+#
+# How to use:
+#   1. Push this file to your GitHub repo root
+#   2. Go to https://dashboard.render.com → New → Blueprint
+#   3. Connect your GitHub repo (Kunal-898/MindTrack-AI-2)
+#   4. Render auto-detects this file and creates the service
+#   5. Add environment variables in the Render dashboard
+
+services:
+  - type: web
+    name: mindtrack-api
+    runtime: python
+    region: oregon          # free tier region
+    plan: free
+
+    # Build phase
+    buildCommand: pip install -r requirements.txt
+
+    # Start phase — Uvicorn runs app.py on the port Render assigns
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+
+    # Health check so Render knows the app is up
+    healthCheckPath: /api/health
+
+    # Environment variables
+    # Set ANTHROPIC_API_KEY and SECRET_KEY in the Render dashboard
+    # (Environment tab of the service) — never commit real keys here
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false          # you fill this in the dashboard
+      - key: SECRET_KEY
+        sync: false          # you fill this in the dashboard
+      - key: PYTHON_VERSION
+        value: "3.11.0"
