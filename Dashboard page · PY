@@ -1,0 +1,192 @@
+"""
+MindTrack – Dashboard Page
+Journal entry input + real-time emotion analysis via the ML model.
+Mirrors the HTML DashboardPage component.
+"""
+
+import streamlit as st
+from datetime import datetime
+from pages_ui.nav import render_sidebar
+from model_engine import predict, wellness_color
+
+
+def render_dashboard():
+    render_sidebar()
+
+    st.markdown("""
+    <h2 style="font-size:1.6rem; font-weight:700; margin-bottom:0.2rem;">
+        📓 Today's Journal
+    </h2>
+    <p style="color:#6B7280; margin-bottom:1.2rem;">
+        Write freely — MindTrack analyses your emotions in real time.
+    </p>
+    """, unsafe_allow_html=True)
+
+    left, right = st.columns([1.5, 1], gap="large")
+
+    # ── LEFT: Journal Input ────────────────────────────────────────────────────
+    with left:
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.markdown("### ✍️ How are you feeling today?")
+
+        journal_text = st.text_area(
+            label="",
+            placeholder="Start writing your thoughts here... What happened today? "
+                        "How did it make you feel?",
+            height=240,
+            key="journal_input",
+            label_visibility="collapsed",
+        )
+
+        char_count = len(journal_text)
+        word_count = len(journal_text.split()) if journal_text.strip() else 0
+        st.markdown(
+            f"<p style='color:#9CA3AF;font-size:0.78rem;'>"
+            f"{char_count} characters · {word_count} words</p>",
+            unsafe_allow_html=True,
+        )
+
+        analyse_btn = st.button(
+            "✨ Analyse My Mood",
+            disabled=(char_count < 10),
+            use_container_width=True,
+        )
+
+        if analyse_btn and char_count >= 10:
+            with st.spinner("Running emotion analysis…"):
+                result = predict(journal_text)
+            st.session_state.analysis_result = result
+
+            # Save entry to history
+            st.session_state.journal_entries.append({
+                "text":      journal_text,
+                "emotions":  result["emotions"],
+                "wellness":  result["wellness_index"],
+                "dominant":  result["dominant"]["name"],
+                "timestamp": datetime.now(),
+            })
+            st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        # ── Alert Banner ───────────────────────────────────────────────────────
+        result = st.session_state.analysis_result
+        if result and result["alert"]:
+            st.markdown("""
+            <div style="background:#FEF2F2; border:1px solid #FECACA;
+                        border-radius:16px; padding:1rem 1.2rem; margin-top:0.5rem;">
+                <b style="color:#DC2626;">⚠️ Mental Health Alert</b>
+                <p style="color:#7F1D1D; margin:0.3rem 0 0; font-size:0.9rem;">
+                    Your entry shows elevated negative emotions. Consider
+                    reaching out to a friend, counsellor, or mental health helpline.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # ── RIGHT: Live Mood Tracker ───────────────────────────────────────────────
+    with right:
+        result = st.session_state.analysis_result
+
+        if result is None:
+            # Placeholder before first analysis
+            st.markdown("""
+            <div class="glass-card" style="text-align:center; padding:2.5rem 1rem;">
+                <div style="font-size:3rem; margin-bottom:0.8rem;">🎯</div>
+                <p style="color:#6B7280;">
+                    Write at least 10 characters and click<br>
+                    <b>Analyse My Mood</b> to see results here.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            dominant = result["dominant"]
+            wellness = result["wellness_index"]
+            wcolor   = wellness_color(wellness)
+
+            # Wellness gauge (progress bar style)
+            st.markdown(f"""
+            <div class="glass-card">
+                <h3 style="font-size:1rem; font-weight:600; margin-bottom:1rem;">
+                    Live Mood Tracker
+                </h3>
+
+                <div style="text-align:center; margin-bottom:1.2rem;">
+                    <div style="font-size:3rem;">{dominant['emoji']}</div>
+                    <div style="font-size:2rem; font-weight:700; color:{wcolor};">
+                        {wellness}%
+                    </div>
+                    <div style="color:#6B7280; font-size:0.85rem;">
+                        Wellness Index · {dominant['name']} dominant
+                    </div>
+                </div>
+
+                <div style="background:#E5E7EB; border-radius:999px;
+                            height:10px; margin-bottom:1.4rem;">
+                    <div style="width:{wellness}%; height:10px; border-radius:999px;
+                                background:linear-gradient(90deg,#3B82F6,#10B981);
+                                transition:width 0.5s;">
+                    </div>
+                </div>
+
+                <p style="font-size:0.9rem; color:#374151; margin-bottom:1rem;">
+                    <b>Emotion Breakdown</b>
+                </p>
+            """, unsafe_allow_html=True)
+
+            for e in result["emotions"]:
+                st.markdown(f"""
+                <div style="margin-bottom:0.7rem;">
+                    <div style="display:flex; justify-content:space-between;
+                                font-size:0.85rem; margin-bottom:3px;">
+                        <span>{e['emoji']} {e['name']}</span>
+                        <span style="color:#6B7280;">{e['score']}%</span>
+                    </div>
+                    <div style="background:#E5E7EB; border-radius:999px; height:6px;">
+                        <div style="width:{e['score']}%; height:6px; border-radius:999px;
+                                    background:{e['color']};"></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown(f"""
+                <div style="background:linear-gradient(135deg,#EFF6FF,#F0FDF4);
+                            border-radius:14px; padding:0.9rem; margin-top:0.5rem;">
+                    <p style="font-size:0.78rem; color:#6B7280; margin:0 0 4px;">
+                        AI Summary
+                    </p>
+                    <p style="font-size:0.88rem; color:#1F2937; margin:0;">
+                        {result['summary']}
+                    </p>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # ── Recent Entries ─────────────────────────────────────────────────────────
+    entries = st.session_state.journal_entries
+    if entries:
+        st.markdown("---")
+        st.markdown("### 📚 Recent Journal Entries")
+        for entry in reversed(entries[-5:]):
+            ts = entry["timestamp"].strftime("%b %d, %Y · %I:%M %p")
+            preview = entry["text"][:120] + ("…" if len(entry["text"]) > 120 else "")
+            wc = wellness_color(entry["wellness"])
+            badges = " ".join(
+                f'<span class="emotion-badge" style="background:{e["bg"]};color:{e["color"]}">'
+                f'{e["emoji"]} {e["name"]} {e["score"]}%</span>'
+                for e in entry["emotions"][:3]
+            )
+            st.markdown(f"""
+            <div class="glass-card" style="margin-bottom:0.6rem;">
+                <div style="display:flex; justify-content:space-between;
+                            align-items:center; margin-bottom:0.4rem;">
+                    <span style="font-size:0.78rem; color:#9CA3AF;">{ts}</span>
+                    <span style="font-weight:600; color:{wc};">
+                        Wellness {entry['wellness']}%
+                    </span>
+                </div>
+                <p style="font-size:0.9rem; color:#374151; margin:0 0 0.5rem;">
+                    {preview}
+                </p>
+                {badges}
+            </div>
+            """, unsafe_allow_html=True)
