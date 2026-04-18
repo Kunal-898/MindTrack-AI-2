@@ -1,0 +1,50 @@
+"""
+MindTrack – Shared Sidebar Navigation
+Call render_sidebar() at the top of every page.
+"""
+
+import streamlit as st
+
+
+def render_sidebar():
+    with st.sidebar:
+        st.markdown("""
+        <div style="text-align:center; padding: 1rem 0 1.5rem;">
+            <span style="font-size:1.8rem;">🧠</span>
+            <h2 style="font-size:1.2rem; font-weight:700; margin:0.3rem 0 0;
+                       background:linear-gradient(135deg,#3B82F6,#10B981);
+                       -webkit-background-clip:text;-webkit-text-fill-color:transparent;">
+                MindTrack
+            </h2>
+        </div>
+        """, unsafe_allow_html=True)
+
+        nav_items = [
+            ("🏠", "Dashboard",  "dashboard"),
+            ("📊", "Analytics",  "analytics"),
+            ("⚙️", "Settings",   "settings"),
+        ]
+
+        for icon, label, page_key in nav_items:
+            active = st.session_state.page == page_key
+            style  = ("background:linear-gradient(135deg,#3B82F6,#10B981);"
+                      "color:white; border-radius:12px; padding:0.5rem 1rem;"
+                      "font-weight:600;" if active else
+                      "color:#374151; padding:0.5rem 1rem;")
+            if st.button(f"{icon}  {label}", key=f"nav_{page_key}",
+                         use_container_width=True):
+                st.session_state.page = page_key
+                st.rerun()
+
+        st.markdown("---")
+        if st.button("🚪  Logout", use_container_width=True):
+            for k in list(st.session_state.keys()):
+                del st.session_state[k]
+            st.rerun()
+
+        st.markdown(f"""
+        <div style="position:absolute; bottom:1rem; left:0; right:0;
+                    text-align:center; color:#9CA3AF; font-size:0.75rem;">
+            Logged in as <b>{st.session_state.get('username','')}</b>
+        </div>
+        """, unsafe_allow_html=True)
