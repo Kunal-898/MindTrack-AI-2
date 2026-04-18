@@ -1,0 +1,166 @@
+"""
+MindTrack – Analytics Page
+Wellness trend (7-day bar chart), emotion distribution pie,
+and topic summary — mirrors the HTML AnalyticsPage.
+"""
+
+import streamlit as st
+import pandas as pd
+import altair as alt
+from collections import Counter
+from pages_ui.nav import render_sidebar
+from model_engine import wellness_color, LABEL_META
+
+
+def render_analytics():
+    render_sidebar()
+
+    st.markdown("""
+    <h2 style="font-size:1.6rem; font-weight:700; margin-bottom:0.2rem;">
+        📊 Analytics Dashboard
+    </h2>
+    <p style="color:#6B7280; margin-bottom:1.2rem;">
+        Visualise your emotional patterns over time.
+    </p>
+    """, unsafe_allow_html=True)
+
+    entries = st.session_state.journal_entries
+
+    if not entries:
+        st.markdown("""
+        <div class="glass-card" style="text-align:center; padding:3rem;">
+            <div style="font-size:3rem; margin-bottom:0.8rem;">📈</div>
+            <p style="color:#6B7280;">
+                No journal entries yet.<br>
+                Head to the <b>Dashboard</b> and write your first entry!
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        return
+
+    # ── Summary Metrics ────────────────────────────────────────────────────────
+    avg_wellness = round(sum(e["wellness"] for e in entries) / len(entries), 1)
+    dominant_counts = Counter(e["dominant"] for e in entries)
+    top_emotion = dominant_counts.most_common(1)[0][0]
+    trend = entries[-1]["wellness"] - entries[0]["wellness"] if len(entries) > 1 else 0
+
+    c1, c2, c3, c4 = st.columns(4)
+    for col, label, value, color in [
+        (c1, "Entries",        len(entries),                        "#3B82F6"),
+        (c2, "Avg Wellness",   f"{avg_wellness}%",                  wellness_color(avg_wellness)),
+        (c3, "Top Emotion",    top_emotion,                         "#8B5CF6"),
+        (c4, "Trend",          f"{'↗' if trend >= 0 else '↘'} {abs(round(trend,1))}%",
+                                "#10B981" if trend >= 0 else "#EF4444"),
+    ]:
+        col.markdown(f"""
+        <div class="metric-card">
+            <p style="font-size:0.75rem; color:#9CA3AF; margin:0 0 4px;">{label}</p>
+            <p style="font-size:1.5rem; font-weight:700; color:{color}; margin:0;">
+                {value}
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    left, right = st.columns(2, gap="large")
+
+    # ── Wellness Trend Bar Chart ───────────────────────────────────────────────
+    with left:
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.markdown("**Wellness Trend**")
+        df = pd.DataFrame([
+            {
+                "Entry": f"#{i+1}  {e['timestamp'].strftime('%b %d')}",
+                "Wellness": e["wellness"],
+                "Color": wellness_color(e["wellness"]),
+            }
+            for i, e in enumerate(entries[-14:])     # last 14 entries
+        ])
+        chart = (
+            alt.Chart(df)
+            .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
+            .encode(
+                x=alt.X("Entry:N", axis=alt.Axis(labelAngle=-35)),
+                y=alt.Y("Wellness:Q", scale=alt.Scale(domain=[0, 100]),
+                        title="Wellness Index (%)"),
+                color=alt.Color("Color:N", scale=None),
+                tooltip=["Entry", "Wellness"],
+            )
+            .properties(height=260)
+        )
+        st.altair_chart(chart, use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── Emotion Distribution ───────────────────────────────────────────────────
+    with right:
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.markdown("**Emotion Distribution**")
+
+        # Aggregate all emotion scores across entries
+        agg: dict[str, float] = {}
+        for entry in entries:
+            for e in entry["emotions"]:
+                agg[e["name"]] = agg.get(e["name"], 0) + e["score"]
+
+        total = sum(agg.values()) or 1
+        df_pie = pd.DataFrame([
+            {"Emotion": k, "Score": round(v / total * 100, 1)}
+            for k, v in sorted(agg.items(), key=lambda x: -x[1])
+        ])
+
+        # Map emotion names → colours from LABEL_META
+        name_to_color = {m["name"]: m["color"] for m in LABEL_META.values()}
+        df_pie["Color"] = df_pie["Emotion"].map(
+            lambda n: name_to_color.get(n, "#CBD5E1")
+        )
+
+        pie = (
+            alt.Chart(df_pie)
+            .mark_arc(innerRadius=55, outerRadius=110)
+            .encode(
+                theta=alt.Theta("Score:Q"),
+                color=alt.Color("Color:N", scale=None, legend=None),
+                tooltip=["Emotion", "Score"],
+            )
+            .properties(height=260)
+        )
+        text = (
+            alt.Chart(df_pie)
+            .mark_text(radius=130, fontSize=12)
+            .encode(
+                theta=alt.Theta("Score:Q", stack=True),
+                text=alt.Text("Emotion:N"),
+            )
+        )
+        st.altair_chart(pie + text, use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── Emotion Heatmap (entries × emotions) ──────────────────────────────────
+    if len(entries) >= 3:
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.markdown("**Emotion Heatmap**  *(each entry vs emotion intensity)*")
+
+        rows = []
+        for i, entry in enumerate(entries[-10:]):
+            for e in entry["emotions"]:
+                rows.append({
+                    "Entry": f"#{i+1}",
+                    "Emotion": f"{e['emoji']} {e['name']}",
+                    "Score": e["score"],
+                })
+        df_heat = pd.DataFrame(rows)
+        heatmap = (
+            alt.Chart(df_heat)
+            .mark_rect(cornerRadius=4)
+            .encode(
+                x=alt.X("Entry:N"),
+                y=alt.Y("Emotion:N"),
+                color=alt.Color("Score:Q",
+                                scale=alt.Scale(scheme="blues"),
+                                title="Score (%)"),
+                tooltip=["Entry", "Emotion", "Score"],
+            )
+            .properties(height=200)
+        )
+        st.altair_chart(heatmap, use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
