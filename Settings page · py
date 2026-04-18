@@ -1,0 +1,133 @@
+"""
+MindTrack – Settings Page
+User preferences: model path, alert threshold, notification toggle.
+Mirrors the HTML SettingsPage component.
+"""
+
+import os
+import streamlit as st
+from pages_ui.nav import render_sidebar
+
+
+def render_settings():
+    render_sidebar()
+
+    st.markdown("""
+    <h2 style="font-size:1.6rem; font-weight:700; margin-bottom:0.2rem;">
+        ⚙️ Settings
+    </h2>
+    <p style="color:#6B7280; margin-bottom:1.2rem;">
+        Customise your MindTrack experience.
+    </p>
+    """, unsafe_allow_html=True)
+
+    left, right = st.columns(2, gap="large")
+
+    # ── Profile ────────────────────────────────────────────────────────────────
+    with left:
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.markdown("### 👤 Profile")
+        new_name = st.text_input("Display Name",
+                                 value=st.session_state.get("username", ""))
+        if st.button("Save Profile"):
+            st.session_state.username = new_name
+            st.success("Profile updated!")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        # ── Model Settings ─────────────────────────────────────────────────────
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.markdown("### 🤖 Model Settings")
+
+        model_dir = st.text_input(
+            "Model Directory Path",
+            value=os.environ.get("MINDTRACK_MODEL_DIR", "./model"),
+            help="Path to your local DistilRoBERTa model folder containing "
+                 "config.json, tokenizer.json, pytorch_model.bin",
+        )
+
+        alert_thresh = st.slider(
+            "Alert Threshold (% negative emotion to trigger warning)",
+            min_value=30, max_value=90, value=55, step=5,
+        )
+
+        if st.button("Save Model Settings"):
+            os.environ["MINDTRACK_MODEL_DIR"] = model_dir
+            st.success(
+                f"Model path set to `{model_dir}`. "
+                "Restart the app for changes to take effect."
+            )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── Notifications ──────────────────────────────────────────────────────────
+    with right:
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.markdown("### 🔔 Notifications")
+        daily_reminder = st.toggle("Daily journal reminder", value=True)
+        weekly_report  = st.toggle("Weekly wellness report",  value=True)
+        alert_notify   = st.toggle("Mental health alert notifications", value=True)
+
+        if daily_reminder:
+            reminder_time = st.time_input("Reminder time", value=None)
+
+        if st.button("Save Notification Preferences"):
+            st.success("Preferences saved!")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        # ── Data Management ────────────────────────────────────────────────────
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.markdown("### 🗄️ Data Management")
+        entries = st.session_state.journal_entries
+        st.markdown(f"**{len(entries)}** journal entries stored this session.")
+
+        if entries:
+            import json
+            import pandas as pd
+            from datetime import datetime
+
+            # Export as JSON
+            export_data = [
+                {
+                    "timestamp": e["timestamp"].isoformat(),
+                    "dominant_emotion": e["dominant"],
+                    "wellness_index": e["wellness"],
+                    "text_preview": e["text"][:200],
+                }
+                for e in entries
+            ]
+            st.download_button(
+                "⬇️ Export Journal Data (JSON)",
+                data=json.dumps(export_data, indent=2),
+                file_name=f"mindtrack_export_{datetime.now().strftime('%Y%m%d')}.json",
+                mime="application/json",
+                use_container_width=True,
+            )
+
+            if st.button("🗑️ Clear All Entries", type="secondary",
+                         use_container_width=True):
+                st.session_state.journal_entries = []
+                st.session_state.analysis_result = None
+                st.success("All entries cleared.")
+                st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── About ──────────────────────────────────────────────────────────────────
+    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+    st.markdown("""
+    ### ℹ️ About MindTrack
+    **MindTrack** is an AI-powered mental health journaling app developed by
+    Aditya Mathuria, Aditya Ranjan & Kunal Kanyal as a B.Tech (AI) project
+    at Gurugram University.
+
+    | Component | Technology |
+    |-----------|-----------|
+    | ML Model  | DistilRoBERTa · HuggingFace Transformers |
+    | Framework | PyTorch |
+    | Frontend  | Streamlit |
+    | NLP       | NLTK · Scikit-learn |
+    | Charts    | Altair |
+
+    > ⚠️ MindTrack is a research tool and **not** a substitute for professional
+    > mental health care.
+    """)
+    st.markdown("</div>", unsafe_allow_html=True)
